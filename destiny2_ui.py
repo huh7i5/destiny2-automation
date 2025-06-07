@@ -153,55 +153,60 @@ def queue_log(msg):
 # —— 自动化主循环 —— 
 def automation_loop():
     global current_count
-    try:
-        rect = get_window_rect("Destiny 2")
-        queue_log(f"窗口客户区屏幕坐标: {rect}")
-    except Exception as e:
-        queue_log(str(e))
-        queue_log("脚本已停止。")
-        return
-
     current_count = 0
 
     while not stop_event.is_set():
+        # —— 每轮开始时重新获取窗口位置信息 —— 
+        try:
+            rect = get_window_rect("Destiny 2")
+            queue_log(f"窗口客户区屏幕坐标: {rect}")
+        except Exception as e:
+            queue_log(str(e))
+            queue_log("脚本已停止。")
+            return
+
+        # 达到最大次数检测
         if max_iterations and current_count >= max_iterations:
             queue_log("达到最大执行次数，停止脚本。")
             break
 
+        # 1. 搜 start.png 并点击
         queue_log("搜索 start.png …")
-        p = None
-        while not stop_event.is_set() and p is None:
-            p = find_template(TEMPLATES['start'][0], rect, TEMPLATES['start'][1])
+        pos = None
+        while not stop_event.is_set() and pos is None:
+            pos = find_template(TEMPLATES['start'][0], rect, TEMPLATES['start'][1])
             time.sleep(0.5)
         if stop_event.is_set(): break
-        queue_log(f"点击 start: {p}")
-        click_at(*p)
+        queue_log(f"点击 start: {pos}")
+        click_at(*pos)
 
+        # 2. 等 a.png，按键序列
         queue_log("等待 a.png …")
-        p = None
-        while not stop_event.is_set() and p is None:
-            p = find_template(TEMPLATES['a'][0], rect, TEMPLATES['a'][1])
+        pos = None
+        while not stop_event.is_set() and pos is None:
+            pos = find_template(TEMPLATES['a'][0], rect, TEMPLATES['a'][1])
             time.sleep(1)
         if stop_event.is_set(): break
         queue_log("检测到 a.png，执行按键序列")
-        press_key('W', 15)
-        press_key('D', 4)
-        press_key('W', 5)
+        press_key('W', 15); press_key('D', 4); press_key('W', 5)
 
+        # 3. 等 return.png，长按 O
         queue_log("等待 return.png …")
-        p = None
-        while not stop_event.is_set() and p is None:
-            p = find_template(TEMPLATES['return'][0], rect, TEMPLATES['return'][1])
+        pos = None
+        while not stop_event.is_set() and pos is None:
+            pos = find_template(TEMPLATES['return'][0], rect, TEMPLATES['return'][1])
             time.sleep(1)
         if stop_event.is_set(): break
         queue_log("检测到 return.png，长按 O")
         press_key('O', 8)
 
+        # 计数并等待下一轮
         current_count += 1
         queue_log(f"本轮完成，第 {current_count} 次，1s 后重试。")
         time.sleep(1)
 
     queue_log("脚本已停止。")
+
 
 # —— 控制函数 —— 
 def start_automation():
