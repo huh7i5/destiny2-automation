@@ -20,7 +20,6 @@ import tkinter as tk
 from tkinter import scrolledtext
 
 # —— 资源根路径 —— 
-# PyInstaller 打包后，所有 --add-data 的资源会被解压到 sys._MEIPASS
 if getattr(sys, "frozen", False):
     base_path = sys._MEIPASS
 else:
@@ -37,8 +36,7 @@ TEMPLATES = {
 PUL = ctypes.POINTER(ctypes.c_ulong)
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
-        ("dx", ctypes.c_long),
-        ("dy", ctypes.c_long),
+        ("dx", ctypes.c_long), ("dy", ctypes.c_long),
         ("mouseData", ctypes.c_ulong),
         ("dwFlags", ctypes.c_ulong),
         ("time", ctypes.c_ulong),
@@ -47,11 +45,9 @@ class MOUSEINPUT(ctypes.Structure):
 
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
-        ("wVk", ctypes.c_ushort),
-        ("wScan", ctypes.c_ushort),
+        ("wVk", ctypes.c_ushort), ("wScan", ctypes.c_ushort),
         ("dwFlags", ctypes.c_ulong),
-        ("time", ctypes.c_ulong),
-        ("dwExtraInfo", PUL),
+        ("time", ctypes.c_ulong), ("dwExtraInfo", PUL),
     ]
 
 class HARDWAREINPUT(ctypes.Structure):
@@ -64,9 +60,8 @@ class HARDWAREINPUT(ctypes.Structure):
 class INPUT(ctypes.Structure):
     class _I(ctypes.Union):
         _fields_ = [
-            ("mi", MOUSEINPUT),
-            ("ki", KEYBDINPUT),
-            ("hi", HARDWAREINPUT),
+            ("mi", MOUSEINPUT), ("ki", KEYBDINPUT),
+            ("hi", HARDWAREINPUT)
         ]
     _anonymous_ = ("_i",)
     _fields_ = [
@@ -77,6 +72,22 @@ class INPUT(ctypes.Structure):
 def send_input(inputs):
     arr = (INPUT * len(inputs))(*inputs)
     ctypes.windll.user32.SendInput(len(inputs), arr, ctypes.sizeof(INPUT))
+
+# —— 窗口居中函数 —— 
+def center_window(hwnd):
+    """
+    把窗口移动到屏幕正中央（仅对窗口化/无边框窗口有效）
+    """
+    screen_w = win32api.GetSystemMetrics(0)
+    screen_h = win32api.GetSystemMetrics(1)
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    width  = right - left
+    height = bottom - top
+    new_x = int((screen_w - width)  / 2)
+    new_y = int((screen_h - height) / 2)
+    win32gui.MoveWindow(hwnd, new_x, new_y, width, height, True)
+    # 等待窗口就位
+    time.sleep(0.2)
 
 # —— 鼠标操作 —— 
 def mouse_move(x, y):
@@ -120,12 +131,14 @@ def get_window_rect(title):
     hwnd = win32gui.FindWindow(None, title)
     if not hwnd:
         raise Exception(f"未找到窗口: {title}")
+    # 窗口化/无边框模式下才可移动
     win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     win32gui.SetForegroundWindow(hwnd)
     time.sleep(0.2)
+    center_window(hwnd)
     l, t, r, b = win32gui.GetClientRect(hwnd)
     sl, st = win32gui.ClientToScreen(hwnd, (l, t))
-    return (sl, st, sl + (r-l), st + (b-t))
+    return (sl, st, sl + (r - l), st + (b - t))
 
 def find_template(path, rect, thresh=0.8):
     img = cv2.cvtColor(
@@ -137,7 +150,8 @@ def find_template(path, rect, thresh=0.8):
     res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
     _, mv, _, ml = cv2.minMaxLoc(res)
     if mv >= thresh:
-        return (rect[0] + ml[0] + w//2, rect[1] + ml[1] + h//2)
+        return (rect[0] + ml[0] + w // 2,
+                rect[1] + ml[1] + h // 2)
     return None
 
 # —— 全局状态 —— 
@@ -154,9 +168,9 @@ def queue_log(msg):
 def automation_loop():
     global current_count
     current_count = 0
- 
+
     while not stop_event.is_set():
-        # —— 每轮开始时重新获取窗口位置信息 —— 
+        # 每轮开始时重新获取并居中窗口
         try:
             rect = get_window_rect("Destiny 2")
             queue_log(f"窗口客户区屏幕坐标: {rect}")
@@ -165,48 +179,47 @@ def automation_loop():
             queue_log("脚本已停止。")
             return
 
-        # 达到最大次数检测
         if max_iterations and current_count >= max_iterations:
             queue_log("达到最大执行次数，停止脚本。")
             break
 
         # 1. 搜 start.png 并点击
         queue_log("搜索 start.png …")
-        pos = None
-        while not stop_event.is_set() and pos is None:
-            pos = find_template(TEMPLATES['start'][0], rect, TEMPLATES['start'][1])
+        p = None
+        while not stop_event.is_set() and p is None:
+            p = find_template(TEMPLATES['start'][0], rect, TEMPLATES['start'][1])
             time.sleep(0.5)
         if stop_event.is_set(): break
-        queue_log(f"点击 start: {pos}")
-        click_at(*pos)
+        queue_log(f"点击 start: {p}")
+        click_at(*p)
 
-        # 2. 等 a.png，按键序列
+        # 2. 等 a.png → W15s, D4s, W5s
         queue_log("等待 a.png …")
-        pos = None
-        while not stop_event.is_set() and pos is None:
-            pos = find_template(TEMPLATES['a'][0], rect, TEMPLATES['a'][1])
+        p = None
+        while not stop_event.is_set() and p is None:
+            p = find_template(TEMPLATES['a'][0], rect, TEMPLATES['a'][1])
             time.sleep(1)
         if stop_event.is_set(): break
         queue_log("检测到 a.png，执行按键序列")
-        press_key('W', 15); press_key('D', 4); press_key('W', 5)
+        press_key('W', 15)
+        press_key('D', 4)
+        press_key('W', 5)
 
-        # 3. 等 return.png，长按 O
+        # 3. 等 return.png → O8s
         queue_log("等待 return.png …")
-        pos = None
-        while not stop_event.is_set() and pos is None:
-            pos = find_template(TEMPLATES['return'][0], rect, TEMPLATES['return'][1])
+        p = None
+        while not stop_event.is_set() and p is None:
+            p = find_template(TEMPLATES['return'][0], rect, TEMPLATES['return'][1])
             time.sleep(1)
         if stop_event.is_set(): break
         queue_log("检测到 return.png，长按 O")
         press_key('O', 8)
 
-        # 计数并等待下一轮
         current_count += 1
         queue_log(f"本轮完成，第 {current_count} 次，1s 后重试。")
         time.sleep(1)
 
     queue_log("脚本已停止。")
-
 
 # —— 控制函数 —— 
 def start_automation():
