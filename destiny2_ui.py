@@ -25,6 +25,8 @@ if getattr(sys, "frozen", False):
 else:
     base_path = os.path.dirname(os.path.abspath(__file__))
 
+WINDOW_TITLE = "Destiny 2"
+
 # —— 模板定义 —— 
 TEMPLATES = {
     'start':  (os.path.join(base_path, 'start.png'),  0.8),
@@ -74,29 +76,31 @@ def send_input(inputs):
     ctypes.windll.user32.SendInput(len(inputs), arr, ctypes.sizeof(INPUT))
 
 # —— 窗口居中函数 —— 
-def center_window(hwnd):
+def center_window(hwnd, width=None, height=None):
     """
-    把窗口移动到屏幕正中央（仅对窗口化/无边框窗口有效）
+    如果 width/height 提供，则先调整窗口大小到 width×height；
+    然后把窗口移动到屏幕正中央（仅对窗口化/无边框窗口有效）。
     """
     screen_w = win32api.GetSystemMetrics(0)
     screen_h = win32api.GetSystemMetrics(1)
+    # 获取当前窗口外框尺寸
     left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-    width  = right - left
-    height = bottom - top
-    new_x = int((screen_w - width)  / 2)
-    new_y = int((screen_h - height) / 2)
-    win32gui.MoveWindow(hwnd, new_x, new_y, width, height, True)
-    # 等待窗口就位
+    cur_w = right - left
+    cur_h = bottom - top
+    # 如果指定了目标大小，使用它
+    tgt_w = width  if width  is not None else cur_w
+    tgt_h = height if height is not None else cur_h
+    new_x = (screen_w - tgt_w) // 2
+    new_y = (screen_h - tgt_h) // 2
+    win32gui.MoveWindow(hwnd, new_x, new_y, tgt_w, tgt_h, True)
     time.sleep(0.2)
 
 # —— 鼠标操作 —— 
 def mouse_move(x, y):
-    w = win32api.GetSystemMetrics(0)
-    h = win32api.GetSystemMetrics(1)
-    ax = int(x * 65535 / (w - 1))
-    ay = int(y * 65535 / (h - 1))
+    w = win32api.GetSystemMetrics(0); h = win32api.GetSystemMetrics(1)
+    ax = int(x * 65535 / (w - 1)); ay = int(y * 65535 / (h - 1))
     mi = MOUSEINPUT(dx=ax, dy=ay, mouseData=0,
-                    dwFlags=win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE,
+                    dwFlags=win32con.MOUSEEVENTF_MOVE|win32con.MOUSEEVENTF_ABSOLUTE,
                     time=0, dwExtraInfo=None)
     send_input([INPUT(type=0, mi=mi)])
 
@@ -104,54 +108,51 @@ def mouse_click():
     down = MOUSEINPUT(dx=0, dy=0, mouseData=0,
                       dwFlags=win32con.MOUSEEVENTF_LEFTDOWN,
                       time=0, dwExtraInfo=None)
-    up = MOUSEINPUT(dx=0, dy=0, mouseData=0,
-                    dwFlags=win32con.MOUSEEVENTF_LEFTUP,
-                    time=0, dwExtraInfo=None)
+    up   = MOUSEINPUT(dx=0, dy=0, mouseData=0,
+                      dwFlags=win32con.MOUSEEVENTF_LEFTUP,
+                      time=0, dwExtraInfo=None)
     send_input([INPUT(type=0, mi=down), INPUT(type=0, mi=up)])
 
 def click_at(x, y):
-    mouse_move(x, y)
-    time.sleep(0.02)
-    mouse_click()
+    mouse_move(x, y); time.sleep(0.02); mouse_click()
 
 # —— 键盘操作 —— 
 def press_key(key, duration):
     vk_map = {'W':0x57, 'D':0x44, 'O':0x4F}
     vk = vk_map[key.upper()]
     down = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=0, time=0, dwExtraInfo=None)
-    up = KEYBDINPUT(wVk=vk, wScan=0,
-                    dwFlags=win32con.KEYEVENTF_KEYUP,
-                    time=0, dwExtraInfo=None)
-    send_input([INPUT(type=1, ki=down)])
-    time.sleep(duration)
-    send_input([INPUT(type=1, ki=up)])
+    up   = KEYBDINPUT(wVk=vk, wScan=0,
+                      dwFlags=win32con.KEYEVENTF_KEYUP,
+                      time=0, dwExtraInfo=None)
+    send_input([INPUT(type=1, ki=down)]); time.sleep(duration); send_input([INPUT(type=1, ki=up)])
 
-# —— 模板匹配 —— 
-def get_window_rect(title):
-    hwnd = win32gui.FindWindow(None, title)
+# —— 获取游戏窗口句柄并准备 —— 
+def prepare_window():
+    hwnd = win32gui.FindWindow(None, WINDOW_TITLE)
     if not hwnd:
-        raise Exception(f"未找到窗口: {title}")
-    # 窗口化/无边框模式下才可移动
+        raise Exception(f"未找到窗口: {WINDOW_TITLE}")
     win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     win32gui.SetForegroundWindow(hwnd)
     time.sleep(0.2)
-    center_window(hwnd)
+    # 先调整到 1920×1080 并居中
+    center_window(hwnd, 1920, 1080)
+    return hwnd
+
+# —— 根据 hwnd 计算客户区在屏幕上的矩形 —— 
+def get_client_rect(hwnd):
     l, t, r, b = win32gui.GetClientRect(hwnd)
     sl, st = win32gui.ClientToScreen(hwnd, (l, t))
     return (sl, st, sl + (r - l), st + (b - t))
 
+# —— 模板匹配 —— 
 def find_template(path, rect, thresh=0.8):
-    img = cv2.cvtColor(
-        np.array(ImageGrab.grab(bbox=rect)),
-        cv2.COLOR_BGR2GRAY
-    )
+    img = cv2.cvtColor(np.array(ImageGrab.grab(bbox=rect)), cv2.COLOR_BGR2GRAY)
     tpl = cv2.imread(path, 0)
-    w, h = tpl.shape[::-1]
+    h, w = tpl.shape
     res = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
     _, mv, _, ml = cv2.minMaxLoc(res)
     if mv >= thresh:
-        return (rect[0] + ml[0] + w // 2,
-                rect[1] + ml[1] + h // 2)
+        return (rect[0] + ml[0] + w//2, rect[1] + ml[1] + h//2)
     return None
 
 # —— 全局状态 —— 
@@ -170,20 +171,15 @@ def automation_loop():
     current_count = 0
 
     while not stop_event.is_set():
-        # 每轮开始时重新获取并居中窗口
+        # 1) 准备窗口：恢复、调整到 1920×1080 并居中
         try:
-            rect = get_window_rect("Destiny 2")
-            queue_log(f"窗口客户区屏幕坐标: {rect}")
+            hwnd = prepare_window()
+            rect = get_client_rect(hwnd)
+            queue_log(f"窗口已调整并居中，客户区坐标: {rect}")
         except Exception as e:
-            queue_log(str(e))
-            queue_log("脚本已停止。")
-            return
+            queue_log(str(e)); queue_log("脚本已停止。"); return
 
-        if max_iterations and current_count >= max_iterations:
-            queue_log("达到最大执行次数，停止脚本。")
-            break
-
-        # 1. 搜 start.png 并点击
+        # 2) 搜 start.png 并点击
         queue_log("搜索 start.png …")
         p = None
         while not stop_event.is_set() and p is None:
@@ -193,7 +189,7 @@ def automation_loop():
         queue_log(f"点击 start: {p}")
         click_at(*p)
 
-        # 2. 等 a.png → W15s, D4s, W5s
+        # 3) 等 a.png → W15s, D4s, W5s
         queue_log("等待 a.png …")
         p = None
         while not stop_event.is_set() and p is None:
@@ -201,11 +197,9 @@ def automation_loop():
             time.sleep(1)
         if stop_event.is_set(): break
         queue_log("检测到 a.png，执行按键序列")
-        press_key('W', 15)
-        press_key('D', 4)
-        press_key('W', 5)
+        press_key('W', 15); press_key('D', 4); press_key('W', 5)
 
-        # 3. 等 return.png → O8s
+        # 4) 等 return.png → O8s
         queue_log("等待 return.png …")
         p = None
         while not stop_event.is_set() and p is None:
@@ -215,45 +209,37 @@ def automation_loop():
         queue_log("检测到 return.png，长按 O")
         press_key('O', 8)
 
+        # 5) 记录并延时
         current_count += 1
         queue_log(f"本轮完成，第 {current_count} 次，1s 后重试。")
         time.sleep(1)
 
     queue_log("脚本已停止。")
 
-# —— 控制函数 —— 
+# —— 启动/停止 & UI —— 
 def start_automation():
     global worker_thread, max_iterations, current_count
-    if worker_thread and worker_thread.is_alive():
-        return
+    if worker_thread and worker_thread.is_alive(): return
     try:
-        mi = int(iter_entry.get())
-        max_iterations = mi if mi > 0 else None
+        mi = int(iter_entry.get()); max_iterations = mi if mi>0 else None
     except:
         max_iterations = None
     current_count = 0
     status_label.config(text="运行中")
     count_label.config(text=f"已执行: {current_count}/{max_iterations or '∞'}")
-    log_text.config(state='normal')
-    log_text.delete('1.0', tk.END)
-    log_text.config(state='disabled')
+    log_text.config(state='normal'); log_text.delete('1.0', tk.END); log_text.config(state='disabled')
     stop_event.clear()
     worker_thread = threading.Thread(target=automation_loop, daemon=True)
     worker_thread.start()
 
 def stop_automation():
-    stop_event.set()
-    status_label.config(text="已停止")
+    stop_event.set(); status_label.config(text="已停止")
 
-# —— 日志 & 计数 更新 —— 
 def process_log_queue():
     try:
         while True:
             msg = log_queue.get_nowait()
-            log_text.config(state='normal')
-            log_text.insert(tk.END, msg + "\n")
-            log_text.see("end")
-            log_text.config(state='disabled')
+            log_text.config(state='normal'); log_text.insert(tk.END, msg+"\n"); log_text.see("end"); log_text.config(state='disabled')
     except queue.Empty:
         pass
     root.after(100, process_log_queue)
@@ -262,35 +248,24 @@ def update_count_label():
     count_label.config(text=f"已执行: {current_count}/{max_iterations or '∞'}")
     root.after(500, update_count_label)
 
-# —— 注册全局热键 —— 
 keyboard.add_hotkey('f11', start_automation)
 keyboard.add_hotkey('end', stop_automation)
 
-# —— Tkinter 界面 —— 
 root = tk.Tk()
 root.title("Destiny2 自动化")
 root.geometry("400x360")
 
 frame = tk.Frame(root)
 tk.Label(frame, text="最大执行次数 (0=无限):").pack(side="left")
-iter_entry = tk.Entry(frame, width=5)
-iter_entry.insert(0, "0")
-iter_entry.pack(side="left", padx=5)
-tk.Button(frame, text="开始 (F11)", command=start_automation).pack(side="left", padx=5)
-tk.Button(frame, text="停止 (End)", command=stop_automation).pack(side="left", padx=5)
+iter_entry = tk.Entry(frame, width=5); iter_entry.insert(0,"0"); iter_entry.pack(side="left",padx=5)
+tk.Button(frame, text="开始 (F11)", command=start_automation).pack(side="left",padx=5)
+tk.Button(frame, text="停止 (End)",  command=stop_automation).pack(side="left",padx=5)
 frame.pack(pady=8)
 
-status_label = tk.Label(root, text="已停止", font=("Arial",12))
-status_label.pack()
+status_label = tk.Label(root, text="已停止", font=("Arial",12)); status_label.pack()
+count_label  = tk.Label(root, text="已执行: 0/∞", font=("Arial",12)); count_label.pack()
+log_text     = scrolledtext.ScrolledText(root, state='disabled', width=48, height=12); log_text.pack(pady=8)
 
-count_label = tk.Label(root, text="已执行: 0/∞", font=("Arial",12))
-count_label.pack()
-
-log_text = scrolledtext.ScrolledText(root, state='disabled', width=48, height=12)
-log_text.pack(pady=8)
-
-# 启动定时器
 root.after(100, process_log_queue)
 root.after(500, update_count_label)
-
 root.mainloop()
