@@ -1,0 +1,8 @@
+## PyInstaller 构建目录
+build/
+dist/
+*.spec
+
+## Python 缓存文件
+__pycache__/
+*.py[cod]
