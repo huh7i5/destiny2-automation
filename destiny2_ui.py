@@ -154,7 +154,7 @@ def queue_log(msg):
 def automation_loop():
     global current_count
     current_count = 0
-
+ 
     while not stop_event.is_set():
         # —— 每轮开始时重新获取窗口位置信息 —— 
         try:
