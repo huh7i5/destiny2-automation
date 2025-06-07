@@ -1,0 +1,6 @@
+# Destiny2 自动化脚本依赖
+opencv-python
+numpy
+pillow
+pywin32
+keyboard
