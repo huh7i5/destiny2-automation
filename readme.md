@@ -9,7 +9,8 @@
   - 按 **End** 或点击界面“停止”按钮停止  
 - **自定义执行次数**：在界面上输入最大执行轮次，0 或留空表示无限循环  
 - **实时日志**：界面底部滚动日志区显示每一步状态  
-- **全屏/无边框兼容**：使用 Windows 原生 SendInput，支持全屏独占模式（我用的无边窗口化
+- **全屏/无边框兼容**：~使用 Windows 原生 SendInput，支持全屏独占模式（我用的无边窗口化~只能用无边框全屏或者窗口化
+![alt text](image.png)
 
 ## 快速开始
 1. **游戏配置**  
@@ -24,6 +25,7 @@
 
 3. **配置模板图**  
    - 确保 `start.png`、`a.png`、`return.png` 与 exe 同目录，或在源码模式下与 `destiny2_ui.py` 同目录  
+   ![alt text](image-1.png)
 
 4. **使用面板**  
    1. 在“最大执行次数”框中输入数字（0=无限循环）  
@@ -33,8 +35,8 @@
 ## 源码运行（可选）
 
 如果想在源码模式下运行，请确保安装以下依赖：
-bash
-pip install -r requirements.txt
+
+    pip install -r requirements.txt
 然后执行：
-bash
-python destiny2_ui.py
+
+    python destiny2_ui.py
